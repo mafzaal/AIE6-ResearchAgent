@@ -20,7 +20,7 @@ from models.research_tools import ResearchToolkit
 import config
 from langchain_community.tools.tavily_search import TavilySearchResults
 from langchain_community.tools.arxiv.tool import ArxivQueryRun
-from typing import TypedDict, Annotated
+from typing import TypedDict, Annotated, Dict, Any, Literal, Union, cast
 from langgraph.graph.message import add_messages
 import operator
 from langchain_core.messages import BaseMessage
@@ -41,39 +41,107 @@ model = ChatOpenAI(model="gpt-4o", temperature=0)
 model = model.bind_tools(tool_belt)
 
 class ResearchAgentState(TypedDict):
-  messages: Annotated[list, add_messages]
-  context: str
+    """
+    State definition for the Research Agent using LangGraph.
+    
+    Attributes:
+        messages: List of messages in the conversation
+        context: Additional context information
+    """
+    messages: Annotated[list[BaseMessage], add_messages]
+    context: str
 
 
 from langgraph.prebuilt import ToolNode
 
-def call_model(state):
-  messages = state["messages"]
-  response = model.invoke(messages)
-  return {"messages" : [response]}
+
+def call_model(state: Dict[str, Any]) -> Dict[str, list[BaseMessage]]:
+    """
+    Process the current state through the language model.
+    
+    Args:
+        state: Current state containing messages and context
+        
+    Returns:
+        Updated state with model's response added to messages
+    """
+    try:
+        messages = state["messages"]
+        response = model.invoke(messages)
+        return {"messages": [response]}
+    except Exception as e:
+        # Handle exceptions gracefully
+        error_msg = f"Error calling model: {str(e)}"
+        print(error_msg)  # Log the error
+        # Return a fallback response
+        return {"messages": [HumanMessage(content=error_msg)]}
 
 
+def should_continue(state: Dict[str, Any]) -> Union[Literal["action"], Literal[END]]:
+    """
+    Determine if the agent should continue processing or end.
+    
+    Args:
+        state: Current state containing messages and context
+        
+    Returns:
+        "action" if tool calls are present, otherwise END
+    """
+    last_message = state["messages"][-1]
+    
+    if last_message.tool_calls:
+        return "action"
+    
+    return END
 
-def should_continue(state):
-  last_message = state["messages"][-1]
 
-  if last_message.tool_calls:
-    return "action"
-
-  return END
-
-
-def convert_inputs(input_object):
-  return {"messages" : [HumanMessage(content=input_object["question"])]}
-
-def parse_output(input_state):
-  return input_state["messages"][-1].content
+def convert_inputs(input_object: Dict[str, str]) -> Dict[str, list[BaseMessage]]:
+    """
+    Convert user input into the format expected by the agent.
+    
+    Args:
+        input_object: Dictionary containing the user's question
+        
+    Returns:
+        Formatted input state for the agent
+    """
+    return {"messages": [HumanMessage(content=input_object["question"])]}
 
 
-def build_agent_chain():
+def parse_output(input_state: Dict[str, Any]) -> str:
+    """
+    Extract the final response from the agent's state.
+    
+    Args:
+        input_state: The final state of the agent
+        
+    Returns:
+        The content of the last message
+    """
+    try:
+        return cast(str, input_state["messages"][-1].content)
+    except (IndexError, KeyError, AttributeError) as e:
+        # Handle potential errors when accessing the output
+        error_msg = f"Error parsing output: {str(e)}"
+        print(error_msg)  # Log the error
+        return "I encountered an error while processing your request."
+
+
+def build_agent_chain() -> Any:
+    """
+    Constructs and returns the research agent execution chain.
+    
+    The chain consists of:
+    1. An agent node that processes messages
+    2. A tool node that executes tools when called
+    
+    Returns:
+        Compiled agent chain ready for execution
+    """
+    # Create a node for tool execution
     tool_node = ToolNode(tool_belt)
 
-
+    # Initialize the graph with our state type
     uncompiled_graph = StateGraph(ResearchAgentState)
 
     uncompiled_graph.add_node("agent", call_model)
