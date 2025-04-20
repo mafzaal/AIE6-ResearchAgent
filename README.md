@@ -1,6 +1,6 @@
 ---
 title: Research Agent
-emoji: 📉
+emoji: 🔍
 colorFrom: blue
 colorTo: purple
 sdk: docker
@@ -20,6 +20,35 @@ An advanced research assistant that combines web search, academic papers, and do
 - **Comprehensive Reports**: Receive structured reports with citations
 - **Concept Breakdown**: Get clear explanations of key concepts
 - **Streaming Responses**: Experience real-time answer generation
+
+## Available Research Tools
+
+The agent uses several specialized tools to conduct comprehensive research:
+
+1. **Web Search (Tavily)**: Searches the internet for current information and real-time data
+   - Uses Tavily API to perform semantic search across the web
+   - Returns up to 5 relevant results by default
+   - Ideal for current events, trends, and general information
+
+2. **Academic Research (arXiv)**: Searches academic papers and scholarly articles
+   - Connects to arXiv's database of scientific papers
+   - Returns up to 5 relevant papers by default with titles, authors, and abstracts
+   - Ideal for scientific research, technical topics, and academic information
+
+3. **Document Analysis (RAG)**: Analyzes user-uploaded documents
+   - Uses Retrieval Augmented Generation (RAG) to answer questions about uploaded files
+   - Supports PDF and text file formats
+   - Breaks documents into chunks and creates vector embeddings for semantic search
+   - Uses Qdrant as the vector database for document storage and retrieval
+
+## Research Process
+
+When you ask a question, the agent:
+1. Determines which tools are most appropriate for your query
+2. Executes searches across selected tools in parallel
+3. Analyzes and synthesizes information from all sources
+4. Provides a comprehensive response with citations to sources
+5. Shows you each step of the research process for transparency
 
 ## Technology Stack
 
@@ -59,7 +88,7 @@ git clone <repository-url>
 cd AIE6-ResearchAgent
 
 # Install dependencies using uv
-uv add langchain langchain-openai langchain-community langchain-core langchain-text-splitters langchain-qdrant qdrant-client chainlit tavily-python arxiv langchain-experimental
+uv sync
 ```
 
 ### Environment Variables
