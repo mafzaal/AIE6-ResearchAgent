@@ -7,276 +7,16 @@ from langchain_openai import ChatOpenAI, OpenAIEmbeddings
 from langchain_qdrant import QdrantVectorStore
 from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams
-from langchain import hub
-from langchain.agents import create_openai_functions_agent, AgentExecutor
-# Update memory import to use the newer approach
-from langchain_core.runnables.history import RunnableWithMessageHistory
-from langchain_core.chat_history import BaseChatMessageHistory
-from langchain_core.prompts import MessagesPlaceholder
+from langchain_core.tools import Tool
+from typing import Dict, Any, List, Optional
+from langchain_core.documents import Document
 
 from utils.file_processor import process_file
 from models.rag import LangChainRAG
-from models.research_tools import ResearchToolkit, RAGQueryInput
+from models.research_tools import RAGQueryInput
+from models.search_tools import create_search_tools
+from models.agent import build_agent_chain, parse_output
 import config
-from langchain_community.tools.tavily_search import TavilySearchResults
-from langchain_community.tools.arxiv.tool import ArxivQueryRun
-from typing import TypedDict, Annotated, Dict, Any, Literal, Union, cast, List, Optional
-from langgraph.graph.message import add_messages
-import operator
-from langchain_core.messages import BaseMessage, SystemMessage
-from langgraph.graph import StateGraph, END
-from langchain_core.messages import HumanMessage
-from langchain_community.tools import DuckDuckGoSearchResults
-from langchain_core.documents import Document
-from langchain_core.tools import Tool
-
-tavily_tool = TavilySearchResults(max_results=5)
-duckduckgo_tool = DuckDuckGoSearchResults(max_results=5)
-arxiv_tool = ArxivQueryRun()
-
-tool_belt = [
-    tavily_tool,
-    duckduckgo_tool,
-    arxiv_tool,
-]
-
-model = ChatOpenAI(model="gpt-4o", temperature=0)
-model = model.bind_tools(tool_belt)
-
-class ResearchAgentState(TypedDict):
-    """
-    State definition for the Research Agent using LangGraph.
-    
-    Attributes:
-        messages: List of messages in the conversation
-        context: Additional context information from RAG retrievals
-        documents: Optional list of Document objects from uploaded files
-    """
-    messages: Annotated[list[BaseMessage], add_messages]
-    context: str
-    documents: Optional[List[Document]]
-
-
-from langgraph.prebuilt import ToolNode
-
-
-def call_model(state: Dict[str, Any]) -> Dict[str, list[BaseMessage]]:
-    """
-    Process the current state through the language model.
-    
-    Args:
-        state: Current state containing messages and context
-        
-    Returns:
-        Updated state with model's response added to messages
-    """
-    try:
-        messages = state["messages"]
-        context = state.get("context", "")
-        
-        # Add context from documents if available
-        if context:
-            # Insert system message with context before the latest user message
-            context_message = SystemMessage(content=f"Use the following information from uploaded documents to enhance your response if relevant:\n\n{context}")
-            
-            # Find the position of the last user message
-            for i in range(len(messages)-1, -1, -1):
-                if isinstance(messages[i], HumanMessage):
-                    # Insert context right after the last user message
-                    enhanced_messages = messages[:i+1] + [context_message] + messages[i+1:]
-                    break
-            else:
-                # No user message found, just append context
-                enhanced_messages = messages + [context_message]
-        else:
-            enhanced_messages = messages
-        
-        # Get response from the model
-        response = model.invoke(enhanced_messages)
-        return {"messages": [response]}
-    except Exception as e:
-        # Handle exceptions gracefully
-        error_msg = f"Error calling model: {str(e)}"
-        print(error_msg)  # Log the error
-        # Return a fallback response
-        return {"messages": [HumanMessage(content=error_msg)]}
-
-
-def should_continue(state: Dict[str, Any]) -> Union[Literal["action"], Literal[END]]:
-    """
-    Determine if the agent should continue processing or end.
-    
-    Args:
-        state: Current state containing messages and context
-        
-    Returns:
-        "action" if tool calls are present, otherwise END
-    """
-    last_message = state["messages"][-1]
-    
-    if last_message.tool_calls:
-        return "action"
-    
-    return END
-
-
-def convert_inputs(input_object: Dict[str, str]) -> Dict[str, list[BaseMessage]]:
-    """
-    Convert user input into the format expected by the agent.
-    
-    Args:
-        input_object: Dictionary containing the user's question
-        
-    Returns:
-        Formatted input state for the agent
-    """
-    return {"messages": [HumanMessage(content=input_object["question"])]}
-
-
-def parse_output(input_state: Dict[str, Any]) -> str:
-    """
-    Extract the final response from the agent's state.
-    
-    Args:
-        input_state: The final state of the agent
-        
-    Returns:
-        The content of the last message
-    """
-    try:
-        return cast(str, input_state["messages"][-1].content)
-    except (IndexError, KeyError, AttributeError) as e:
-        # Handle potential errors when accessing the output
-        error_msg = f"Error parsing output: {str(e)}"
-        print(error_msg)  # Log the error
-        return "I encountered an error while processing your request."
-
-
-def build_agent_chain() -> Any:
-    """
-    Constructs and returns the research agent execution chain.
-    
-    The chain consists of:
-    1. A retrieval node that gets context from documents
-    2. An agent node that processes messages
-    3. A tool node that executes tools when called
-    
-    Returns:
-        Compiled agent chain ready for execution
-    """
-    # Create document search tool
-    doc_search_tool = Tool(
-        name="DocumentSearch",
-        description="Search within the user's uploaded document. Use this tool when you need information from the specific document that was uploaded.",
-        func=document_search_tool,
-        args_schema=RAGQueryInput
-    )
-    
-    # Add document search tool to the tool belt if we have upload capability
-    tools = tool_belt.copy()
-    tools.append(doc_search_tool)
-    
-    # Create a node for tool execution
-    tool_node = ToolNode(tools)
-
-    # Initialize the graph with our state type
-    uncompiled_graph = StateGraph(ResearchAgentState)
-
-    # Add nodes
-    uncompiled_graph.add_node("retrieve", retrieve_from_documents)
-    uncompiled_graph.add_node("agent", call_model)
-    uncompiled_graph.add_node("action", tool_node)
-    
-    # Set the entry point to retrieve context first
-    uncompiled_graph.set_entry_point("retrieve")
-    
-    # Add edges
-    uncompiled_graph.add_edge("retrieve", "agent")
-    
-    # Add conditional edges from agent
-    uncompiled_graph.add_conditional_edges(
-        "agent",
-        should_continue,
-        {
-            "action": "action",
-            END: END
-        }
-    )
-
-    # Complete the loop
-    uncompiled_graph.add_edge("action", "agent")
-    
-    # Compile the graph
-    compiled_graph = uncompiled_graph.compile()
-
-    # Create the full chain
-    agent_chain = convert_inputs | compiled_graph 
-    return agent_chain
-
-
-def retrieve_from_documents(state: Dict[str, Any]) -> Dict[str, str]:
-    """
-    Retrieve relevant context from uploaded documents based on the user query.
-    
-    Args:
-        state: Current state containing messages and optional documents
-        
-    Returns:
-        Updated state with context from document retrieval
-    """
-    # Get the last user message
-    for message in reversed(state["messages"]):
-        if isinstance(message, HumanMessage):
-            query = message.content
-            break
-    else:
-        # No user message found
-        return {"context": ""}
-    
-    # Skip if no documents are uploaded
-    retriever = cl.user_session.get("retriever")
-    if not retriever:
-        return {"context": ""}
-    
-    try:
-        # Retrieve relevant documents
-        docs = retriever.invoke(query)
-        if not docs:
-            return {"context": ""}
-        
-        # Extract text from documents
-        context = "\n\n".join([f"Document excerpt: {doc.page_content}" for doc in docs])
-        return {"context": context}
-    except Exception as e:
-        print(f"Error retrieving from documents: {str(e)}")
-        return {"context": ""}
-
-
-def document_search_tool(query: str) -> str:
-    """
-    Tool function to search within uploaded documents.
-    
-    Args:
-        query: Search query string
-        
-    Returns:
-        Information retrieved from the documents
-    """
-    retriever = cl.user_session.get("retriever")
-    if not retriever:
-        return "No documents have been uploaded yet. Please upload a document first."
-    
-    docs = retriever.invoke(query)
-    if not docs:
-        return "No relevant information found in the uploaded documents."
-    
-    # Format the results
-    results = []
-    for i, doc in enumerate(docs):
-        results.append(f"[Document {i+1}] {doc.page_content}")
-    
-    return "\n\n".join(results)
-
 
 @cl.on_chat_start
 async def on_chat_start():
@@ -289,8 +29,11 @@ async def on_chat_start():
         content="Welcome to the Research Agent! I can help you research topics using web search, arXiv papers, and documents you upload."
     ).send()
     
+    # Create search tools
+    tools = create_search_tools(max_results=config.MAX_TAVILY_SEARCH_RESULTS)
+    
     # Create the agent
-    agent = build_agent_chain()
+    agent = build_agent_chain(tools)
     
     # Store agent in user session
     cl.user_session.set("agent", agent)
@@ -328,7 +71,7 @@ async def main(message):
     with cl.Step(name="Research Process", type="tool") as step:
         # Run the agent executor with callbacks to stream the response
         result = await agent_executor.ainvoke(
-            {"question" : message.content},
+            {"question": message.content},
             config={
                 "callbacks": [cl.AsyncLangchainCallbackHandler()],
                 "configurable": {"session_id": message.id}  # Add session_id from message
@@ -348,10 +91,9 @@ async def main(message):
                 ).send()
     
     # Get the final answer
-    final_answer = parse_output(result) #result["messages"][-1].content
+    final_answer = parse_output(result)
     
-    # Fix: Replace cl.make_async_gen with proper token streaming in Chainlit 2.0.4
-    # Instead of using make_async_gen, we'll manually stream tokens from the final_answer
+    # Stream tokens from the final_answer
     await msg.stream_token(final_answer)
     await msg.send()
 
@@ -407,8 +149,11 @@ async def process_uploaded_file(file: cl.File, msg: cl.Message):
         # Store the retriever in the user session
         cl.user_session.set("retriever", retriever)
         
-        # Rebuild the agent chain with updated tools
-        agent = build_agent_chain()
+        # Get the search tools
+        tools = create_search_tools(max_results=config.MAX_TAVILY_SEARCH_RESULTS)
+        
+        # Rebuild the agent with the retriever
+        agent = build_agent_chain(tools, retriever)
         cl.user_session.set("agent", agent)
         
         # Let the user know that the file is processed
