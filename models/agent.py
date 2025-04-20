@@ -2,19 +2,14 @@
 LangGraph Agent implementation for the Research Agent.
 """
 from typing import TypedDict, Annotated, Dict, Any, Literal, Union, cast, List, Optional
-
 from langchain_openai import ChatOpenAI
 from langchain_core.tools import Tool
 from langchain_core.messages import BaseMessage, SystemMessage, HumanMessage
 from langchain_core.documents import Document
-
 from langgraph.graph.message import add_messages
 from langgraph.graph import StateGraph, END
 from langgraph.prebuilt import ToolNode
 from models.research_tools import RAGQueryInput
-
-# Define END as a string constant since we can't use it directly in type annotations
-END_STATE = "end"
 
 class ResearchAgentState(TypedDict):
     """
