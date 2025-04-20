@@ -26,11 +26,14 @@ import operator
 from langchain_core.messages import BaseMessage
 from langgraph.graph import StateGraph, END
 from langchain_core.messages import HumanMessage
+from langchain_community.tools import DuckDuckGoSearchResults
 
 tavily_tool = TavilySearchResults(max_results=5)
+duckduckgo_tool = DuckDuckGoSearchResults(max_results=5)
 
 tool_belt = [
     tavily_tool,
+    duckduckgo_tool,
     ArxivQueryRun(),
 ]
 
