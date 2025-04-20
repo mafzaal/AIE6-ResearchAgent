@@ -10,11 +10,11 @@ license: apache-2.0
 
 # Research Agent
 
-An advanced research assistant that combines web search, academic papers, and document analysis to help with comprehensive research tasks.
+An advanced research assistant that combines web search, academic papers, RSS feeds, and document analysis to help with comprehensive research tasks.
 
 ## Features
 
-- **Multi-source Research**: Use web search (Tavily/DuckDuckGo), arXiv papers, and uploaded documents
+- **Multi-source Research**: Use web search (Tavily/DuckDuckGo), arXiv papers, RSS feeds, and uploaded documents
 - **Upload PDF or text documents** for document-specific research
 - **Research Process Transparency**: View the agent's step-by-step research process
 - **Comprehensive Reports**: Receive structured reports with citations
@@ -36,17 +36,50 @@ The agent uses several specialized tools to conduct comprehensive research:
    - Returns up to 5 relevant papers by default with titles, authors, and abstracts
    - Ideal for scientific research, technical topics, and academic information
 
-3. **Document Analysis (RAG)**: Analyzes user-uploaded documents
+3. **RSS Feed Reader**: Fetches and processes articles from RSS feeds
+   - Retrieves content from multiple RSS feed URLs
+   - Supports filtering by search query
+   - Provides article metadata including title, source, link, and publication date
+   - Optional NLP processing for summaries and keywords extraction
+   - Ideal for staying updated on specific news sources and blogs
+
+4. **Document Analysis (RAG)**: Analyzes user-uploaded documents
    - Uses Retrieval Augmented Generation (RAG) to answer questions about uploaded files
    - Supports PDF and text file formats
    - Breaks documents into chunks and creates vector embeddings for semantic search
    - Uses Qdrant as the vector database for document storage and retrieval
 
+## Agent Architecture
+
+The Research Agent uses LangGraph for workflow orchestration, providing a robust framework for reasoning and tool usage:
+
+```
+┌───────────────┐      ┌─────────────┐      ┌───────────────┐
+│               │      │             │      │               │
+│    Retrieve   ├─────►│    Agent    │◄─────┤     Tool      │
+│     Node      │      │     Node    │      │     Node      │
+│               │      │             │      │               │
+└───────────────┘      └──────┬──────┘      └───────────────┘
+                              │
+                              │
+                              ▼
+                       ┌──────────────┐
+                       │              │
+                       │  End State   │
+                       │              │
+                       └──────────────┘
+```
+
+- **Retrieve Node**: Gathers context from uploaded documents
+- **Agent Node**: Processes user requests and determines required actions
+- **Tool Node**: Executes specific tools like web search, arXiv queries, or RSS feed retrieval
+- **End State**: Delivers final response after gathering and synthesizing information
+
 ## Research Process
 
 When you ask a question, the agent:
 1. Determines which tools are most appropriate for your query
-2. Executes searches across selected tools
+2. Executes searches across selected tools (web, academic, RSS feeds)
 3. Retrieves relevant context from uploaded documents (if any)
 4. Shows you each step of the research process for transparency
 5. Analyzes and synthesizes information from all sources
@@ -61,6 +94,7 @@ When you ask a question, the agent:
 - **OpenAI**: Provides the GPT-4o language model and embeddings
 - **Tavily/DuckDuckGo**: Web search APIs for real-time information
 - **arXiv**: Integration for academic paper search
+- **Feedparser**: Library for parsing RSS feeds
 
 ## How It Works
 
@@ -68,6 +102,7 @@ When you ask a question, the agent:
 2. **Multi-tool research process**: 
    - Searches the web using Tavily/DuckDuckGo for current information
    - Queries arXiv for relevant academic papers
+   - Fetches articles from RSS feeds when specific news sources are needed
    - Analyzes uploaded documents using RAG (if provided)
 3. **Comprehensive analysis**: 
    - Breaks down key concepts from research

@@ -13,7 +13,7 @@ from langchain_core.documents import Document
 
 from utils.file_processor import process_file
 from models.rag import LangChainRAG
-from models.research_tools import RAGQueryInput
+from models.research_tools import RAGQueryInput, create_rss_feed_tool
 from models.search_tools import create_search_tools
 from models.agent import build_agent_chain, parse_output
 import config
@@ -26,11 +26,15 @@ async def on_chat_start():
     """
     # Display welcome message
     await cl.Message(
-        content="Welcome to the Research Agent! I can help you research topics using web search, arXiv papers, and documents you upload."
+        content="Welcome to the Research Agent! I can help you research topics using web search, arXiv papers, RSS feeds, and documents you upload."
     ).send()
     
     # Create search tools
     tools = create_search_tools(max_results=config.MAX_TAVILY_SEARCH_RESULTS)
+    
+    # Add RSS Feed tool
+    rss_feed_tool = create_rss_feed_tool()
+    tools.append(rss_feed_tool)
     
     # Create the agent
     agent = build_agent_chain(tools)
@@ -151,6 +155,10 @@ async def process_uploaded_file(file: cl.File, msg: cl.Message):
         
         # Get the search tools
         tools = create_search_tools(max_results=config.MAX_TAVILY_SEARCH_RESULTS)
+        
+        # Add RSS Feed tool
+        rss_feed_tool = create_rss_feed_tool()
+        tools.append(rss_feed_tool)
         
         # Rebuild the agent with the retriever
         agent = build_agent_chain(tools, retriever)
