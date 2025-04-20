@@ -35,7 +35,8 @@ async def on_chat_start():
     toolkit = ResearchToolkit()
     
     # Initialize the agent with research tools
-    prompt = hub.pull("hwchase17/openai-functions-agent")
+    # Get prompt from hub using configurable source from config
+    prompt = hub.pull(config.PROMPT_HUB_SOURCE)
     
     # Add our custom system prompt
     prompt = prompt.partial(

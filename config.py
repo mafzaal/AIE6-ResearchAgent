@@ -27,6 +27,9 @@ Your job is to:
 
 Be thorough, objective, and focus on providing high-quality information."""
 
+# LangChain Hub prompt source
+PROMPT_HUB_SOURCE = "mafzaal/openai-functions-agent"
+
 # Tool configurations
 MAX_TAVILY_SEARCH_RESULTS = 5
 MAX_ARXIV_SEARCH_RESULTS = 5
