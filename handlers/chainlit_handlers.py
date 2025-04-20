@@ -9,13 +9,85 @@ from qdrant_client import QdrantClient
 from qdrant_client.models import Distance, VectorParams
 from langchain import hub
 from langchain.agents import create_openai_functions_agent, AgentExecutor
-from langchain.memory import ConversationBufferMemory
+# Update memory import to use the newer approach
+from langchain_core.runnables.history import RunnableWithMessageHistory
+from langchain_core.chat_history import BaseChatMessageHistory
 from langchain_core.prompts import MessagesPlaceholder
 
 from utils.file_processor import process_file
 from models.rag import LangChainRAG
 from models.research_tools import ResearchToolkit
 import config
+from langchain_community.tools.tavily_search import TavilySearchResults
+from langchain_community.tools.arxiv.tool import ArxivQueryRun
+from typing import TypedDict, Annotated
+from langgraph.graph.message import add_messages
+import operator
+from langchain_core.messages import BaseMessage
+from langgraph.graph import StateGraph, END
+from langchain_core.messages import HumanMessage
+
+tavily_tool = TavilySearchResults(max_results=5)
+
+tool_belt = [
+    tavily_tool,
+    ArxivQueryRun(),
+]
+
+model = ChatOpenAI(model="gpt-4o", temperature=0)
+model = model.bind_tools(tool_belt)
+
+class ResearchAgentState(TypedDict):
+  messages: Annotated[list, add_messages]
+  context: str
+
+
+from langgraph.prebuilt import ToolNode
+
+def call_model(state):
+  messages = state["messages"]
+  response = model.invoke(messages)
+  return {"messages" : [response]}
+
+
+
+def should_continue(state):
+  last_message = state["messages"][-1]
+
+  if last_message.tool_calls:
+    return "action"
+
+  return END
+
+
+def convert_inputs(input_object):
+  return {"messages" : [HumanMessage(content=input_object["question"])]}
+
+def parse_output(input_state):
+  return input_state["messages"][-1].content
+
+
+def build_agent_chain():
+    tool_node = ToolNode(tool_belt)
+
+
+    uncompiled_graph = StateGraph(ResearchAgentState)
+
+    uncompiled_graph.add_node("agent", call_model)
+    uncompiled_graph.add_node("action", tool_node)
+    uncompiled_graph.set_entry_point("agent")
+    uncompiled_graph.add_conditional_edges(
+        "agent",
+        should_continue
+    )
+
+    uncompiled_graph.add_edge("action", "agent")
+    compiled_graph = uncompiled_graph.compile()
+
+    agent_chain = convert_inputs | compiled_graph 
+    return agent_chain
+
+
 
 @cl.on_chat_start
 async def on_chat_start():
@@ -29,47 +101,15 @@ async def on_chat_start():
     ).send()
     
     # Initialize language model for the agent
-    llm = ChatOpenAI(temperature=0, streaming=True)
     
-    # Initialize research toolkit without RAG (will add later if file is uploaded)
-    toolkit = ResearchToolkit()
-    
-    # Initialize the agent with research tools
-    # Get prompt from hub using configurable source from config
-    prompt = hub.pull(config.PROMPT_HUB_SOURCE)
-    
-    # Add our custom system prompt
-    prompt = prompt.partial(
-        system=config.AGENT_SYSTEM_PROMPT
-    )
-    
-    # Add memory to the agent
-    memory = ConversationBufferMemory(memory_key="chat_history", return_messages=True)
-    
-    # Add memory to the prompt
-    prompt = prompt.partial(
-        chat_history=MessagesPlaceholder(variable_name="chat_history")
-    )
     
     # Create the agent
-    agent = create_openai_functions_agent(
-        llm=llm,
-        tools=toolkit.get_tools(),
-        prompt=prompt
-    )
+    agent = build_agent_chain()
     
-    # Create the agent executor
-    agent_executor = AgentExecutor(
-        agent=agent,
-        tools=toolkit.get_tools(),
-        memory=memory,
-        verbose=True,
-        return_intermediate_steps=True
-    )
     
     # Store agent and toolkit in user session
-    cl.user_session.set("agent", agent_executor)
-    cl.user_session.set("toolkit", toolkit)
+    cl.user_session.set("agent", agent)
+    
     
     # Prompt user to upload a file (optional)
     await cl.Message(
@@ -100,10 +140,12 @@ async def main(message):
     # Create a parent step for the research process
     with cl.Step(name="Research Process", type="tool") as step:
         # Run the agent executor with callbacks to stream the response
-        # Fixed: Define the input correctly as a dictionary with "input" key
         result = await agent_executor.ainvoke(
-            {"input": message.content},
-            config={"callbacks": [cl.AsyncLangchainCallbackHandler()]}
+            {"question" : message.content},
+            config={
+                "callbacks": [cl.AsyncLangchainCallbackHandler()],
+                "configurable": {"session_id": message.id}  # Add session_id from message
+            }
         )
         
         # Add steps from agent's intermediate steps
@@ -119,7 +161,7 @@ async def main(message):
                 ).send()
     
     # Get the final answer
-    final_answer = result["output"]
+    final_answer = parse_output(result) #result["messages"][-1].content
     
     # Fix: Replace cl.make_async_gen with proper token streaming in Chainlit 2.0.4
     # Instead of using make_async_gen, we'll manually stream tokens from the final_answer

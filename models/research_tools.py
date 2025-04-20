@@ -8,7 +8,7 @@ import os
 from typing import List, Dict, Any, Optional
 from langchain.agents import tool
 from langchain_core.tools import Tool
-from langchain_core.pydantic_v1 import BaseModel, Field
+from pydantic import BaseModel, Field  # Updated import from pydantic directly
 
 from langchain_openai import ChatOpenAI
 from langchain_community.tools.tavily_search import TavilySearchResults
