@@ -5,10 +5,12 @@ description = "Simple Pythonic RAG App"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "arxiv>=2.2.0",
     "chainlit==2.0.4",
     "langchain>=0.3.23",
     "langchain-community>=0.3.21",
     "langchain-core>=0.3.54",
+    "langchain-experimental>=0.3.4",
     "langchain-openai>=0.3.8",
     "langchain-qdrant>=0.2.0",
     "langchain-text-splitters>=0.3.8",
@@ -18,5 +20,6 @@ dependencies = [
     "pypdf>=5.4.0",
     "pypdf2==3.0.1",
     "qdrant-client>=1.13.3",
+    "tavily-python>=0.5.4",
     "websockets==14.2",
 ]
