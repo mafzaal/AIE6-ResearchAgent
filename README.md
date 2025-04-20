@@ -14,19 +14,20 @@ An advanced research assistant that combines web search, academic papers, and do
 
 ## Features
 
-- **Multi-source Research**: Use web search (Tavily), arXiv papers, and uploaded documents
+- **Multi-source Research**: Use web search (Tavily/DuckDuckGo), arXiv papers, and uploaded documents
 - **Upload PDF or text documents** for document-specific research
-- **Research Process Transparency**: View the agent's research steps
+- **Research Process Transparency**: View the agent's step-by-step research process
 - **Comprehensive Reports**: Receive structured reports with citations
 - **Concept Breakdown**: Get clear explanations of key concepts
 - **Streaming Responses**: Experience real-time answer generation
+- **LangGraph Workflow**: Enhanced agent reasoning and tool orchestration
 
 ## Available Research Tools
 
 The agent uses several specialized tools to conduct comprehensive research:
 
-1. **Web Search (Tavily)**: Searches the internet for current information and real-time data
-   - Uses Tavily API to perform semantic search across the web
+1. **Web Search (Tavily & DuckDuckGo)**: Searches the internet for current information and real-time data
+   - Uses Tavily and DuckDuckGo APIs to perform semantic search across the web
    - Returns up to 5 relevant results by default
    - Ideal for current events, trends, and general information
 
@@ -45,25 +46,27 @@ The agent uses several specialized tools to conduct comprehensive research:
 
 When you ask a question, the agent:
 1. Determines which tools are most appropriate for your query
-2. Executes searches across selected tools in parallel
-3. Analyzes and synthesizes information from all sources
-4. Provides a comprehensive response with citations to sources
-5. Shows you each step of the research process for transparency
+2. Executes searches across selected tools
+3. Retrieves relevant context from uploaded documents (if any)
+4. Shows you each step of the research process for transparency
+5. Analyzes and synthesizes information from all sources
+6. Provides a comprehensive response with citations to sources
 
 ## Technology Stack
 
 - **LangChain**: Framework for developing applications powered by language models
+- **LangGraph**: Advanced workflow orchestration for LLM applications
 - **Chainlit**: Frontend for creating chat-based applications
 - **Qdrant**: Vector database for storing and retrieving document embeddings
-- **OpenAI**: Provides the language model and embeddings
-- **Tavily**: Web search API for real-time information
+- **OpenAI**: Provides the GPT-4o language model and embeddings
+- **Tavily/DuckDuckGo**: Web search APIs for real-time information
 - **arXiv**: Integration for academic paper search
 
 ## How It Works
 
 1. **Ask a research question or upload a document**: Start with a question or upload a related document
 2. **Multi-tool research process**: 
-   - Searches the web using Tavily for current information
+   - Searches the web using Tavily/DuckDuckGo for current information
    - Queries arXiv for relevant academic papers
    - Analyzes uploaded documents using RAG (if provided)
 3. **Comprehensive analysis**: 
